@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@layer base {
+  input, select, textarea {
+    font-size: max(16px, 1rem);
+  }
+}
+
 @layer utilities {
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);

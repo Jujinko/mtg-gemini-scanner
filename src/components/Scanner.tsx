@@ -21,6 +21,7 @@ export default function Scanner() {
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [isContinuousMode, setIsContinuousMode] = useState(false);
   const { addToCollection, removeFromCollection } = useCollectionStore();
+  const [focusPoint, setFocusPoint] = useState<{ x: number, y: number } | null>(null);
 
   React.useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -40,9 +41,11 @@ export default function Scanner() {
 
   const handleUserMedia = useCallback((stream: MediaStream) => {
     const track = stream.getVideoTracks()[0];
-    const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-    if ((capabilities as any).torch) {
-      setTorchSupported(true);
+    if (track) {
+      const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+      if ((capabilities as any).torch) {
+        setTorchSupported(true);
+      }
     }
   }, []);
 
@@ -50,13 +53,15 @@ export default function Scanner() {
     const stream = webcamRef.current?.video?.srcObject as MediaStream | undefined;
     if (stream) {
       const track = stream.getVideoTracks()[0];
-      try {
-        await track.applyConstraints({
-           advanced: [{ torch: !isTorchOn }] as any
-        });
-        setIsTorchOn(!isTorchOn);
-      } catch (err) {
-        console.error("Failed to toggle torch", err);
+      if (track) {
+        try {
+          await track.applyConstraints({
+             advanced: [{ torch: !isTorchOn }] as any
+          });
+          setIsTorchOn(!isTorchOn);
+        } catch (err) {
+          console.error("Failed to toggle torch", err);
+        }
       }
     }
   }, [isTorchOn]);
@@ -66,8 +71,32 @@ export default function Scanner() {
     setIsTorchOn(false); // Reset torch state when switching cameras
   }, []);
 
+  const handleVideoTap = useCallback(async (e: React.MouseEvent<HTMLDivElement>) => {
+    const stream = webcamRef.current?.video?.srcObject as MediaStream | undefined;
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    
+    setFocusPoint({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setTimeout(() => setFocusPoint(null), 1000);
+
+    try {
+      await track.applyConstraints({
+         advanced: [{
+           pointsOfInterest: [{ x, y }],
+           focusMode: 'single-shot',
+         }] as any,
+      });
+    } catch (err) {
+      // Capability not supported, fail silently
+    }
+  }, []);
+
   const capture = useCallback(async () => {
-    if (isProcessing) return;
+    if (isProcessing || foundCard) return;
     
     if (isOffline) {
       showToast('You are offline. Please connect to the internet to scan.', 'error');
@@ -75,8 +104,8 @@ export default function Scanner() {
       return;
     }
 
-    const imageSrc = webcamRef.current?.getScreenshot();
-    if (!imageSrc) {
+    const rawImage = webcamRef.current?.getScreenshot();
+    if (!rawImage) {
       showToast('Could not access camera frame.', 'error');
       if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
       return;
@@ -87,6 +116,34 @@ export default function Scanner() {
     showToast('Identifying card...', 'info');
 
     try {
+      const cropToFocalFrame = (dataUrl: string): Promise<string> => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const targetWidth = img.width * 0.75;
+            const targetHeight = targetWidth * (4 / 3);
+            const safeHeight = Math.min(targetHeight, img.height * 0.95);
+            const safeWidth = safeHeight * (3 / 4);
+            canvas.width = safeWidth;
+            canvas.height = safeHeight;
+            const ctx = canvas.getContext('2d')!;
+            ctx.drawImage(
+              img,
+              (img.width - safeWidth) / 2,
+              (img.height - safeHeight) / 2,
+              safeWidth,
+              safeHeight,
+              0, 0, safeWidth, safeHeight
+            );
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+          };
+          img.src = dataUrl;
+        });
+      };
+
+      const imageSrc = await cropToFocalFrame(rawImage);
+
       // 1. Identify via Gemini
       const aiResult = await identifyCardFromImage(imageSrc);
       
@@ -100,9 +157,9 @@ export default function Scanner() {
       showToast(`Found: ${aiResult.name}. Fetching details...`, 'info');
 
       // 2. Fetch full details from Scryfall
-      const scryCard = await searchScryfallCard(aiResult.name, aiResult.set);
+      const searchResult = await searchScryfallCard(aiResult.name, aiResult.set);
       
-      if (!scryCard) {
+      if (!searchResult) {
         showToast(`Could not find details for "${aiResult.name}" in Scryfall.`, 'error');
         if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
         setIsProcessing(false);
@@ -112,23 +169,29 @@ export default function Scanner() {
       if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
 
       if (isContinuousMode) {
-        const imageUrl = getStandardCardImage(scryCard);
-        const savedCard = addToCollection({
-          id: scryCard.id,
-          name: scryCard.name,
-          set: scryCard.set,
-          setName: scryCard.set_name,
-          imageUrl,
-          priceUsd: scryCard.prices?.usd || undefined,
-        });
-        showToast(`Auto-saved: ${scryCard.name}`, 'success', {
-          label: 'Undo',
-          onClick: () => {
-            removeFromCollection(savedCard.instanceId);
-          }
-        });
+        if (searchResult.matchType === 'exact') {
+          const scryCard = searchResult.card;
+          const imageUrl = getStandardCardImage(scryCard);
+          const savedCard = addToCollection({
+            id: scryCard.id,
+            name: scryCard.name,
+            set: scryCard.set,
+            setName: scryCard.set_name,
+            imageUrl,
+            priceUsd: scryCard.prices?.usd || undefined,
+          });
+          showToast(`Auto-saved: ${scryCard.name}`, 'success', {
+            label: 'Undo',
+            onClick: () => {
+              removeFromCollection(savedCard.instanceId);
+            }
+          });
+        } else {
+          showToast(`Found but couldn't exact match. Tap to save.`, 'info');
+          setFoundCard(searchResult.card);
+        }
       } else {
-        setFoundCard(scryCard);
+        setFoundCard(searchResult.card);
       }
 
     } catch (err) {
@@ -138,7 +201,21 @@ export default function Scanner() {
     } finally {
       setIsProcessing(false);
     }
-  }, [webcamRef, isProcessing, showToast, isOffline, isContinuousMode, addToCollection, removeFromCollection]);
+  }, [webcamRef, isProcessing, showToast, isOffline, isContinuousMode, addToCollection, removeFromCollection, foundCard]);
+
+  React.useEffect(() => {
+    if (!isContinuousMode || isProcessing || isOffline || foundCard) return;
+    
+    const cooldown = setTimeout(() => {
+      const interval = setInterval(() => {
+        if (!isProcessing && !foundCard) {
+          capture();
+        }
+      }, 2500); // Poll every 2.5 seconds
+      return () => clearInterval(interval);
+    }, 1500); // 1.5 second cooldown after last capture
+    return () => clearTimeout(cooldown);
+  }, [isContinuousMode, isProcessing, isOffline, foundCard, capture]);
 
   return (
     <div className="relative w-full h-full bg-zinc-950 flex flex-col overflow-hidden text-zinc-100">
@@ -211,16 +288,25 @@ export default function Scanner() {
                        <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] pointer-events-none"></div>
                     </div>
                     
-                    {/* @ts-ignore */}
-                    <Webcam
-                        audio={false}
-                        ref={webcamRef}
-                        screenshotFormat="image/jpeg"
-                        videoConstraints={{ facingMode }}
-                        onUserMediaError={handleUserMediaError}
-                        onUserMedia={handleUserMedia}
-                        className="w-full h-full object-cover relative z-10"
-                    />
+                    <div className="absolute inset-0 z-10" onClick={handleVideoTap}>
+                      {/* @ts-ignore */}
+                      <Webcam
+                          audio={false}
+                          ref={webcamRef}
+                          screenshotFormat="image/jpeg"
+                          videoConstraints={{ facingMode }}
+                          onUserMediaError={handleUserMediaError}
+                          onUserMedia={handleUserMedia}
+                          className="w-full h-full object-cover relative pointer-events-none"
+                      />
+                      {focusPoint && (
+                        <div 
+                           className="absolute w-12 h-12 border-2 border-emerald-400 rounded-lg pointer-events-none -translate-x-1/2 -translate-y-1/2 animate-ping"
+                           style={{ left: focusPoint.x, top: focusPoint.y }}
+                        />
+                      )}
+                    </div>
+
                     {/* Outline guide */}
                     <div className="absolute inset-0 bg-black/40 pointer-events-none z-10"></div>
                     

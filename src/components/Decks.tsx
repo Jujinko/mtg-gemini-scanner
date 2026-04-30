@@ -16,9 +16,28 @@ export default function Decks() {
   
   const [addFromCollectionOpen, setAddFromCollectionOpen] = useState(false);
   const [addSearch, setAddSearch] = useState('');
+  const [selectedForDeck, setSelectedForDeck] = useState<Set<string>>(new Set());
+  const [allowDuplicates, setAllowDuplicates] = useState(false);
   const { collection, addToDeck } = useCollectionStore();
 
   const formRef = useRef<HTMLFormElement>(null);
+
+  const handleOpenAddFromCollection = () => {
+    setSelectedForDeck(new Set());
+    setAddSearch('');
+    setAllowDuplicates(false);
+    setAddFromCollectionOpen(true);
+  };
+
+  const handleAddSelectedToDeck = () => {
+    if (!viewingDeck) return;
+    const cardsToAdd = collection.filter(c => selectedForDeck.has(c.instanceId));
+    cardsToAdd.forEach(item => {
+      addToDeck(viewingDeck, item.card);
+    });
+    showToast(`Added ${selectedForDeck.size} cards to deck`, 'success');
+    setAddFromCollectionOpen(false);
+  };
 
   const handleCreateDeck = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +74,7 @@ export default function Decks() {
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <span className="hidden sm:inline-block text-[10px] sm:text-xs font-bold uppercase tracking-widest text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-full leading-none">{selectedDeck.cards.length} cards</span>
             <button 
-                onClick={() => setAddFromCollectionOpen(true)}
+                onClick={handleOpenAddFromCollection}
                 className="p-1.5 sm:p-2 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full transition"
                 title="Add from Collection"
             >
@@ -123,6 +142,97 @@ export default function Decks() {
              onClose={() => setExportOpen(false)} 
           />
         )}
+
+      <Drawer.Root open={addFromCollectionOpen} onClose={() => setAddFromCollectionOpen(false)}>
+        <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70]" />
+            <Drawer.Content className="bg-zinc-900 border-t border-zinc-800 flex flex-col rounded-t-3xl h-[85vh] sm:h-[80vh] fixed bottom-0 left-0 right-0 z-[80] shadow-2xl">
+              <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-zinc-700 my-4" />
+              
+              <div className="px-6 flex justify-between items-start shrink-0 mb-4 border-b border-zinc-800 pb-4">
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1 pr-4">Add from Collection</h2>
+                    <p className="text-zinc-400 text-xs sm:text-sm">Select cards to add to the deck</p>
+                  </div>
+                  <label className="flex items-center gap-2 mt-2">
+                    <input 
+                      type="checkbox" 
+                      checked={allowDuplicates} 
+                      onChange={(e) => setAllowDuplicates(e.target.checked)} 
+                      className="rounded bg-zinc-900 border-zinc-700 text-emerald-500 focus:ring-emerald-500" 
+                    />
+                    <span className="text-xs text-zinc-400">Allow Duplicates</span>
+                  </label>
+              </div>
+              
+              <div className="px-6 mb-4 shrink-0">
+                  <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                      <input 
+                          type="search" 
+                          placeholder="Search your collection..." 
+                          className="w-full pl-10 pr-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-base text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
+                          value={addSearch}
+                          onChange={(e) => setAddSearch(e.target.value)}
+                      />
+                  </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 pb-24">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {collection
+                    .filter(c => !addSearch.trim() || c.card.name.toLowerCase().includes(addSearch.toLowerCase()))
+                    .map(item => {
+                      const isAlreadyInDeck = selectedDeck.cards.some((c: any) => c.card.id === item.card.id);
+                      const isSelected = selectedForDeck.has(item.instanceId);
+                      const disabled = isAlreadyInDeck && !allowDuplicates;
+                      
+                      return (
+                      <button
+                        key={item.instanceId}
+                        disabled={disabled}
+                        onClick={() => {
+                          const newSet = new Set(selectedForDeck);
+                          if (isSelected) newSet.delete(item.instanceId);
+                          else newSet.add(item.instanceId);
+                          setSelectedForDeck(newSet);
+                        }}
+                        className={`bg-zinc-800 border text-left rounded-xl overflow-hidden shadow-sm transition relative ${isSelected ? 'border-emerald-500' : 'border-zinc-700'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-emerald-400'}`}
+                      >
+                         <div className="aspect-[2.5/3.5] bg-zinc-950 border-b border-zinc-800 relative transition">
+                            {item.card.imageUrl ? (
+                              <LazyCardImage src={item.card.imageUrl} alt={item.card.name} className="w-full h-full object-cover" containerClassName="w-full h-full" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-zinc-600 px-4 text-center text-xs font-medium uppercase tracking-wider">No Image</div>
+                            )}
+                         </div>
+                         {isSelected && (
+                           <div className="absolute top-2 right-2 bg-emerald-500 text-zinc-900 w-6 h-6 rounded-full flex justify-center items-center font-bold text-xs shadow-md">
+                             ✓
+                           </div>
+                         )}
+                         {disabled && !isSelected && (
+                           <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center">
+                             <span className="bg-zinc-900 border border-zinc-700 text-zinc-300 text-[10px] uppercase font-bold px-2 py-1 rounded">In Deck</span>
+                           </div>
+                         )}
+                      </button>
+                    )})}
+                </div>
+              </div>
+              
+              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-zinc-900 via-zinc-900 to-transparent pt-12 pb-6 px-6">
+                 <button
+                   disabled={selectedForDeck.size === 0}
+                   onClick={handleAddSelectedToDeck}
+                   className="w-full py-4 bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-950 font-bold rounded-2xl transition shadow-lg"
+                 >
+                   Add {selectedForDeck.size} {selectedForDeck.size === 1 ? 'Card' : 'Cards'}
+                 </button>
+              </div>
+            </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
       </div>
     );
   }
@@ -210,67 +320,6 @@ export default function Decks() {
           </div>
         )}
       </div>
-
-      <Drawer.Root open={addFromCollectionOpen} onClose={() => setAddFromCollectionOpen(false)}>
-        <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70]" />
-            <Drawer.Content className="bg-zinc-900 border-t border-zinc-800 flex flex-col rounded-t-3xl h-[85vh] sm:h-[80vh] fixed bottom-0 left-0 right-0 z-[80] shadow-2xl">
-              <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-zinc-700 my-4" />
-              
-              <div className="px-6 flex justify-between items-start shrink-0 mb-4 border-b border-zinc-800 pb-4">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1 pr-4">Add from Collection</h2>
-                    <p className="text-zinc-400 text-xs sm:text-sm">Select cards to add to the deck</p>
-                  </div>
-              </div>
-              
-              <div className="px-6 mb-4">
-                  <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                      <input 
-                          type="search" 
-                          placeholder="Search your collection..." 
-                          className="w-full pl-10 pr-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-base text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
-                          value={addSearch}
-                          onChange={(e) => setAddSearch(e.target.value)}
-                      />
-                  </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-6 pb-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {collection
-                    .filter(c => !addSearch.trim() || c.card.name.toLowerCase().includes(addSearch.toLowerCase()))
-                    .map(item => (
-                      <button
-                        key={item.instanceId}
-                        onClick={() => {
-                          if (viewingDeck) {
-                            addToDeck(viewingDeck, item.card);
-                            showToast(`Added ${item.card.name} to deck`, 'success');
-                          }
-                        }}
-                        className="bg-zinc-800 border text-left border-zinc-700 rounded-xl overflow-hidden shadow-sm group hover:border-emerald-500 transition relative"
-                      >
-                         <div className="aspect-[2.5/3.5] bg-zinc-950 border-b border-zinc-800 relative transition">
-                            {item.card.imageUrl ? (
-                              <LazyCardImage src={item.card.imageUrl} alt={item.card.name} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 duration-300" containerClassName="w-full h-full" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-zinc-600 px-4 text-center text-xs font-medium uppercase tracking-wider">No Image</div>
-                            )}
-                         </div>
-                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex flex-col items-center justify-center transition opacity-0 group-hover:opacity-100">
-                             <div className="bg-emerald-500 text-zinc-950 rounded-full p-2 shadow-lg drop-shadow-md">
-                                 <Plus className="w-6 h-6" />
-                             </div>
-                         </div>
-                      </button>
-                  ))}
-                </div>
-              </div>
-            </Drawer.Content>
-        </Drawer.Portal>
-      </Drawer.Root>
 
       {deckToDelete && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

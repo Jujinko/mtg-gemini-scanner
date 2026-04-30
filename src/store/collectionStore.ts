@@ -28,7 +28,7 @@ interface CollectionState {
   addToCollection: (card: CardData) => SavedCard;
   removeFromCollection: (instanceId: string) => void;
   restoreCard: (card: SavedCard) => void;
-  createDeck: (name: string) => void;
+  createDeck: (name: string) => string;
   deleteDeck: (deckId: string) => void;
   addToDeck: (deckId: string, card: CardData) => SavedCard;
   removeFromDeck: (deckId: string, instanceId: string) => void;
@@ -59,13 +59,16 @@ export const useCollectionStore = create<CollectionState>()(
           collection: [...state.collection, card],
         })),
 
-      createDeck: (name) =>
+      createDeck: (name) => {
+        const newDeck = { id: crypto.randomUUID(), name, cards: [] };
         set((state) => ({
           decks: [
             ...state.decks,
-            { id: crypto.randomUUID(), name, cards: [] },
+            newDeck,
           ],
-        })),
+        }));
+        return newDeck.id;
+      },
 
       deleteDeck: (deckId) =>
         set((state) => ({

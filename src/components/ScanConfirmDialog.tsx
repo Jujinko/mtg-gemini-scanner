@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScryfallCard, searchScryfallCard } from '../services/scryfall';
+import { ScryfallCard } from '../services/scryfall';
 import { getStandardCardImage } from '../lib/mtg';
 import { useCollectionStore } from '../store/collectionStore';
 import { useToast } from './ui/ToastProvider';
@@ -22,24 +22,16 @@ export default function ScanConfirmDialog({ scryfallCard, onClose, onOverrideCar
   
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<ScryfallCard[]>([]);
+  const [searchResults, setSearchResults] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const imageUrl = getStandardCardImage(scryfallCard);
 
   const handleSave = () => {
     let finalDeckId = selectedDeck;
-    if (showDeckPicker && newDeckName.trim()) {
-      createDeck(newDeckName.trim());
-      // Find the newly created deck ID? Our store createDeck doesn't return the ID.
-      // So we might need to modify the store, or just rely on the latest deck.
-      // Actually if they create it inline, it's easier to just save to it...
-      // Let's modify handleSave for inline deck creation:
-      const newDeckId = crypto.randomUUID();
-      useCollectionStore.setState((state) => ({
-        decks: [{ id: newDeckId, name: newDeckName.trim(), cards: [], lastUpdated: Date.now() }, ...state.decks]
-      }));
-      finalDeckId = newDeckId;
+    if (selectedDeck === 'new_deck' && newDeckName.trim()) {
+      finalDeckId = createDeck(newDeckName.trim());
     }
 
     for (let i = 0; i < quantity; i++) {
@@ -65,19 +57,43 @@ export default function ScanConfirmDialog({ scryfallCard, onClose, onOverrideCar
     onClose();
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (searchTimeout) clearTimeout(searchTimeout);
+    
+    if (!val.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    setSearchTimeout(setTimeout(async () => {
+      try {
+        const results = await fetch(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(val.trim())}`).then(r => r.json());
+        if (results.data) {
+          setSearchResults(results.data.slice(0, 10));
+        } else {
+          setSearchResults([]);
+        }
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 200));
+  };
+
+  const selectSearchResult = async (name: string) => {
     setIsSearching(true);
     try {
-      const results = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(searchQuery.trim())}`).then(r => r.json());
-      if (results.data) {
-        setSearchResults(results.data.slice(0, 10));
+      const result = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`).then(r => r.json());
+      if (result && !result.error) {
+        onOverrideCard(result);
       } else {
-        setSearchResults([]);
+        showToast(`Could not load details for ${name}`, 'error');
       }
     } catch {
-      setSearchResults([]);
+      showToast(`Could not load details for ${name}`, 'error');
     } finally {
       setIsSearching(false);
     }
@@ -106,36 +122,31 @@ export default function ScanConfirmDialog({ scryfallCard, onClose, onOverrideCar
           <div className="flex-1 overflow-y-auto overscroll-y-contain px-4 sm:px-6 pb-6 flex flex-col gap-5">
             {showSearch ? (
               <div className="flex flex-col h-full gap-4">
-                <form onSubmit={handleSearch} className="relative">
+                <form onSubmit={(e) => e.preventDefault()} className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
                   <input
                     type="search"
                     autoFocus
                     placeholder="Search for correct card..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleSearchChange(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-base text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
                   />
                 </form>
                 <div className="flex-1 overflow-y-auto space-y-2">
-                  {isSearching ? (
+                  {isSearching && searchResults.length === 0 ? (
                     <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 text-emerald-500 animate-spin" /></div>
-                  ) : searchResults.map(card => (
+                  ) : searchResults.map(name => (
                     <button
-                      key={card.id}
-                      onClick={() => onOverrideCard(card)}
+                      key={name}
+                      onClick={() => selectSearchResult(name)}
                       className="w-full p-3 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl text-left border border-zinc-800 flex gap-3 items-center"
                     >
-                      {getStandardCardImage(card) ? (
-                        <div className="w-12 h-16 bg-zinc-900 rounded overflow-hidden flex-shrink-0">
-                          <img src={getStandardCardImage(card)} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <div className="w-12 h-16 bg-zinc-900 rounded flex-shrink-0" />
-                      )}
+                      <div className="w-12 h-16 bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center">
+                         <span className="text-zinc-600 font-bold">?</span>
+                      </div>
                       <div>
-                        <p className="font-bold text-white text-sm">{card.name}</p>
-                        <p className="text-xs text-zinc-400">{card.set_name}</p>
+                        <p className="font-bold text-white text-sm">{name}</p>
                       </div>
                     </button>
                   ))}
