@@ -5,11 +5,12 @@ import { useToast } from './ui/ToastProvider';
 import ExportDialog from './ExportDialog';
 
 export default function Decks() {
-  const { decks, createDeck, deleteDeck, removeFromDeck } = useCollectionStore();
+  const { decks, createDeck, deleteDeck, removeFromDeck, restoreToDeck } = useCollectionStore();
   const { showToast } = useToast();
   const [newDeckName, setNewDeckName] = useState('');
   const [viewingDeck, setViewingDeck] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [deckToDelete, setDeckToDelete] = useState<string | null>(null);
 
   const handleCreateDeck = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,7 +77,12 @@ export default function Decks() {
                             <button
                                 onClick={() => {
                                     removeFromDeck(selectedDeck.id, item.instanceId);
-                                    showToast(`Removed from deck`, 'info');
+                                    showToast(`Removed from deck`, 'info', {
+                                        label: 'Undo',
+                                        onClick: () => {
+                                            restoreToDeck(selectedDeck.id, item);
+                                        }
+                                    });
                                 }}
                                 className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition shrink-0"
                             >
@@ -108,6 +114,7 @@ export default function Decks() {
         <form onSubmit={handleCreateDeck} className="relative flex gap-2">
           <input 
             type="text" 
+            enterKeyHint="done"
             placeholder="New deck name..." 
             className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
             value={newDeckName}
@@ -115,6 +122,7 @@ export default function Decks() {
           />
           <button 
              type="submit"
+             aria-label="Create deck"
              disabled={!newDeckName.trim()}
              className="px-4 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-zinc-950 rounded-xl font-bold flex items-center transition"
           >
@@ -145,12 +153,9 @@ export default function Decks() {
                       <button 
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm('Delete this deck?')) {
-                                deleteDeck(deck.id);
-                                showToast('Deck deleted', 'info');
-                            }
+                            setDeckToDelete(deck.id);
                         }}
-                        className="absolute top-4 right-4 p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition"
+                        className="absolute top-4 right-4 p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition"
                       >
                           <Trash2 className="w-4 h-4" />
                       </button>
@@ -182,6 +187,37 @@ export default function Decks() {
           </div>
         )}
       </div>
+
+      {deckToDelete && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-sm overflow-hidden text-left flex flex-col shadow-2xl">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-white mb-2">Delete Deck</h2>
+              <p className="text-zinc-400 text-sm">
+                This will delete the deck completely. The cards will remain in your collection. Are you sure you want to proceed?
+              </p>
+            </div>
+            <div className="p-4 border-t border-zinc-800 bg-zinc-950 flex flex-row gap-3">
+              <button 
+                 onClick={() => setDeckToDelete(null)}
+                 className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold rounded-2xl transition"
+              >
+                Cancel
+              </button>
+              <button 
+                 onClick={() => {
+                   deleteDeck(deckToDelete);
+                   setDeckToDelete(null);
+                   showToast('Deck deleted', 'info');
+                 }}
+                 className="flex-1 py-3 bg-red-500/90 hover:bg-red-500 text-white font-bold rounded-2xl transition"
+              >
+                Delete Deck
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

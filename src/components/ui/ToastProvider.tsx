@@ -2,15 +2,21 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 type ToastType = 'success' | 'error' | 'info';
 
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: string;
   message: string;
   type: ToastType;
+  action?: ToastAction;
 }
 
 interface ToastContextType {
   toasts: Toast[];
-  showToast: (message: string, type?: ToastType) => void;
+  showToast: (message: string, type?: ToastType, action?: ToastAction) => void;
   removeToast: (id: string) => void;
 }
 
@@ -19,9 +25,9 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = (message: string, type: ToastType = 'info') => {
+  const showToast = (message: string, type: ToastType = 'info', action?: ToastAction) => {
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type, action }]);
     setTimeout(() => {
       removeToast(id);
     }, 4000);
@@ -47,15 +53,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             }`}
           >
             {toast.type === 'success' && (
-               <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+               <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] shrink-0"></div>
             )}
             {toast.type === 'error' && (
-               <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"></div>
+               <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0"></div>
             )}
             {toast.type === 'info' && (
-               <div className="w-2 h-2 rounded-full bg-zinc-500"></div>
+               <div className="w-2 h-2 rounded-full bg-zinc-500 shrink-0"></div>
             )}
-            <span className="text-xs font-medium text-zinc-300">{toast.message}</span>
+            <span className="text-xs font-medium text-zinc-300 flex-1">{toast.message}</span>
+            {toast.action && (
+              <button
+                onClick={() => {
+                  toast.action!.onClick();
+                  removeToast(toast.id);
+                }}
+                className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 hover:text-emerald-300 shrink-0 px-2 py-1 bg-emerald-500/10 rounded-lg transition-colors"
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>

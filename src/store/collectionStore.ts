@@ -27,10 +27,12 @@ interface CollectionState {
   decks: Deck[];
   addToCollection: (card: CardData) => void;
   removeFromCollection: (instanceId: string) => void;
+  restoreCard: (card: SavedCard) => void;
   createDeck: (name: string) => void;
   deleteDeck: (deckId: string) => void;
   addToDeck: (deckId: string, card: CardData) => void;
   removeFromDeck: (deckId: string, instanceId: string) => void;
+  restoreToDeck: (deckId: string, card: SavedCard) => void;
 }
 
 export const useCollectionStore = create<CollectionState>()(
@@ -50,6 +52,11 @@ export const useCollectionStore = create<CollectionState>()(
       removeFromCollection: (instanceId) =>
         set((state) => ({
           collection: state.collection.filter((c) => c.instanceId !== instanceId),
+        })),
+        
+      restoreCard: (card) =>
+        set((state) => ({
+          collection: [...state.collection, card],
         })),
 
       createDeck: (name) =>
@@ -87,6 +94,18 @@ export const useCollectionStore = create<CollectionState>()(
               ? {
                   ...deck,
                   cards: deck.cards.filter((c) => c.instanceId !== instanceId),
+                }
+              : deck
+          ),
+        })),
+
+      restoreToDeck: (deckId, card) =>
+        set((state) => ({
+          decks: state.decks.map((deck) =>
+            deck.id === deckId
+              ? {
+                  ...deck,
+                  cards: [...deck.cards, card],
                 }
               : deck
           ),

@@ -5,7 +5,7 @@ import { useToast } from './ui/ToastProvider';
 import ExportDialog from './ExportDialog';
 
 export default function Collection() {
-  const { collection, removeFromCollection } = useCollectionStore();
+  const { collection, removeFromCollection, restoreCard } = useCollectionStore();
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
@@ -34,7 +34,10 @@ export default function Collection() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
           <input 
-            type="text" 
+            type="search" 
+            enterKeyHint="search"
+            autoCapitalize="none"
+            autoCorrect="off"
             placeholder="Search verified cards..." 
             className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
             value={search}
@@ -73,9 +76,14 @@ export default function Collection() {
                   <button 
                     onClick={() => {
                         removeFromCollection(item.instanceId);
-                        showToast(`Removed ${item.card.name}`, 'info');
+                        showToast(`Removed ${item.card.name}`, 'info', {
+                          label: 'Undo',
+                          onClick: () => {
+                            restoreCard(item);
+                          }
+                        });
                     }}
-                    className="absolute top-2 right-2 p-2 bg-red-500/80 text-white rounded-lg opacity-0 group-hover:opacity-100 transition shadow-lg hover:bg-red-500 backdrop-blur-sm border border-red-500/20"
+                    className="absolute top-2 right-2 p-2 bg-red-500/80 text-white rounded-lg opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition shadow-lg hover:bg-red-500 backdrop-blur-sm border border-red-500/20"
                     aria-label="Remove Card"
                   >
                     <Trash2 className="w-4 h-4" />
