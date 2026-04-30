@@ -1,0 +1,8 @@
+{
+  "name": "MTG Scanner & Collection App",
+  "description": "Magic: The Gathering card scanner to identify cards via camera, add them to your collection, and manage decks.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
