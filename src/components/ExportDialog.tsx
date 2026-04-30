@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, X } from 'lucide-react';
+import { Copy, Check, X, Share } from 'lucide-react';
 import { SavedCard } from '../store/collectionStore';
 import { useToast } from './ui/ToastProvider';
 
@@ -80,6 +80,25 @@ export default function ExportDialog({ title, cards, onClose }: ExportDialogProp
             </div>
             {copied === 'arena' ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5 text-zinc-400" />}
           </button>
+
+          {navigator.share && (
+            <button 
+               onClick={() => {
+                 const text = generateExportText('arena');
+                 navigator.share({
+                   title: `Export ${title}`,
+                   text: text,
+                 }).catch(console.error);
+               }}
+               className="w-full py-4 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-white font-bold rounded-2xl flex items-center justify-between px-6 transition group"
+            >
+               <div className="flex flex-col items-start gap-1">
+                <span>Share via Device...</span>
+                <span className="text-[10px] text-zinc-400 group-hover:text-zinc-300 font-normal uppercase tracking-widest">Messages, Notes, Discord</span>
+              </div>
+              <Share className="w-5 h-5 text-zinc-400" />
+            </button>
+          )}
         </div>
 
         <div className="p-5 border-t border-zinc-800 bg-zinc-950">

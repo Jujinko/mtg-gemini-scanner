@@ -25,12 +25,12 @@ export interface Deck {
 interface CollectionState {
   collection: SavedCard[];
   decks: Deck[];
-  addToCollection: (card: CardData) => void;
+  addToCollection: (card: CardData) => SavedCard;
   removeFromCollection: (instanceId: string) => void;
   restoreCard: (card: SavedCard) => void;
   createDeck: (name: string) => void;
   deleteDeck: (deckId: string) => void;
-  addToDeck: (deckId: string, card: CardData) => void;
+  addToDeck: (deckId: string, card: CardData) => SavedCard;
   removeFromDeck: (deckId: string, instanceId: string) => void;
   restoreToDeck: (deckId: string, card: SavedCard) => void;
 }
@@ -41,13 +41,13 @@ export const useCollectionStore = create<CollectionState>()(
       collection: [],
       decks: [],
 
-      addToCollection: (card) =>
+      addToCollection: (card) => {
+        const newCard: SavedCard = { instanceId: crypto.randomUUID(), card, dateAdded: Date.now() };
         set((state) => ({
-          collection: [
-            ...state.collection,
-            { instanceId: crypto.randomUUID(), card, dateAdded: Date.now() },
-          ],
-        })),
+          collection: [...state.collection, newCard],
+        }));
+        return newCard;
+      },
 
       removeFromCollection: (instanceId) =>
         set((state) => ({
@@ -72,20 +72,20 @@ export const useCollectionStore = create<CollectionState>()(
           decks: state.decks.filter((d) => d.id !== deckId),
         })),
 
-      addToDeck: (deckId, card) =>
+      addToDeck: (deckId, card) => {
+        const newCard: SavedCard = { instanceId: crypto.randomUUID(), card, dateAdded: Date.now() };
         set((state) => ({
           decks: state.decks.map((deck) =>
             deck.id === deckId
               ? {
                   ...deck,
-                  cards: [
-                    ...deck.cards,
-                    { instanceId: crypto.randomUUID(), card, dateAdded: Date.now() },
-                  ],
+                  cards: [...deck.cards, newCard],
                 }
               : deck
           ),
-        })),
+        }));
+        return newCard;
+      },
 
       removeFromDeck: (deckId, instanceId) =>
         set((state) => ({
