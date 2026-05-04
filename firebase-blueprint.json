@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "JudgeRuling": {
+      "title": "Judge Ruling",
+      "description": "A rules adjudication request and response log for the closed alpha.",
+      "type": "object",
+      "properties": {
+        "trace_id": { "type": "string" },
+        "device_id": { "type": "string" },
+        "alpha_token": { "type": "string" },
+        "timestamp": { "type": "number", "description": "Server timestamp" },
+        "request": {
+          "type": "object",
+          "properties": {
+            "card_ids": { "type": "array", "items": { "type": "string" } },
+            "question": { "type": "string" },
+            "context": {
+              "type": "object",
+              "properties": {
+                "active_player": { "type": "string" },
+                "phase": { "type": "string" },
+                "free_text": { "type": "string" }
+              }
+            },
+            "prompt_version": { "type": "string" },
+            "model": { "type": "string" }
+          }
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "tldr": { "type": "string" },
+            "steps": { "type": "array" },
+            "citations": { "type": "array" },
+            "insufficient": { "type": "boolean" },
+            "model_confidence": { "type": "number" }
+          }
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "latency_ms": { "type": "number" },
+            "input_tokens": { "type": "number" },
+            "output_tokens": { "type": "number" },
+            "error": { "type": "string" }
+          }
+        },
+        "feedback": {
+          "type": "object",
+          "properties": {
+            "rating": { "type": "string", "enum": ["up", "down", null] },
+            "comment": { "type": "string" },
+            "rated_at": { "type": "number", "description": "Server timestamp" }
+          }
+        }
+      },
+      "required": ["trace_id", "device_id", "alpha_token"]
+    }
+  },
+  "firestore": {
+    "judgeRulings/{rulingId}": {
+      "schema": "JudgeRuling",
+      "description": "Stores judge alpha responses and feedback."
+    }
+  }
+}

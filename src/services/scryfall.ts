@@ -3,6 +3,7 @@ export interface ScryfallCard {
   name: string;
   set: string;
   set_name: string;
+  type_line?: string;
   image_uris?: {
     normal: string;
     small: string;

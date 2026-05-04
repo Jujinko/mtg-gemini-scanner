@@ -1,23 +1,18 @@
 import { GoogleGenAI } from '@google/genai';
 
-// We must lazy initialize the AI client to avoid crashing on missing keys during startup
-let aiClient: GoogleGenAI | null = null;
-
 export function getAIClient(): GoogleGenAI {
-  if (!aiClient) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error('GEMINI_API_KEY environment variable is missing.');
-    }
-    aiClient = new GoogleGenAI({ apiKey: key });
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error('API Key environment variable is missing.');
   }
-  return aiClient;
+  return new GoogleGenAI({ apiKey: key });
 }
 
 export interface IdentificationResult {
   name?: string;
   set?: string;
   error?: string;
+  errorObj?: Error;
 }
 
 export async function identifyCardFromImage(base64Image: string): Promise<IdentificationResult> {
@@ -30,7 +25,7 @@ export async function identifyCardFromImage(base64Image: string): Promise<Identi
       : base64Image;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite-preview',
+      model: 'gemini-flash-latest',
       contents: [
         {
           role: 'user',
@@ -63,6 +58,6 @@ export async function identifyCardFromImage(base64Image: string): Promise<Identi
 
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    return { error: error.message || "Failed to process image" };
+    return { error: error.message || "Failed to process image", errorObj: error instanceof Error ? error : new Error(String(error)) };
   }
 }

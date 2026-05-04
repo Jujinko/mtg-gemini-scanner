@@ -40,8 +40,9 @@ export default function ExportDialog({ title, cards, onClose }: ExportDialogProp
       setCopied(format);
       showToast('Copied to clipboard!', 'success');
       setTimeout(() => setCopied(null), 2000);
-    }).catch(() => {
-      showToast('Failed to copy', 'error');
+    }).catch((err) => {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      showToast('Failed to copy', 'error', undefined, errorObj);
     });
   };
 

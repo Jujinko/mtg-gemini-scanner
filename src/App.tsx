@@ -1,14 +1,50 @@
-import { useState } from 'react';
-import { Camera, Layers, LibraryBig } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Camera, Layers, LibraryBig, KeyRound } from 'lucide-react';
 import Scanner from './components/Scanner';
 import Collection from './components/Collection';
 import Decks from './components/Decks';
 import { ToastProvider } from './components/ui/ToastProvider';
 
+// Type declaration for the AI Studio API key methods
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 type Tab = 'scanner' | 'collection' | 'decks';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('scanner');
+  const [hasKey, setHasKey] = useState<boolean>(true); // assume true first so we don't flash, then check
+  const [debugKey, setDebugKey] = useState<string>('');
+
+  useEffect(() => {
+    async function checkKey() {
+      if (window.aistudio) {
+        const has = await window.aistudio.hasSelectedApiKey();
+        setHasKey(has);
+      }
+      try {
+        // @ts-ignore
+        setDebugKey(`env.API_KEY=${!!process.env.API_KEY} env.GEMINI_API_KEY=${!!process.env.GEMINI_API_KEY}`);
+      } catch (e: any) {
+        setDebugKey(e.message);
+      }
+    }
+    checkKey();
+  }, []);
+
+  const handleProvideKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      // Assume success due to race condition with hasSelectedApiKey
+      setHasKey(true);
+    }
+  };
 
   const handleTabChange = (tab: Tab) => {
     if (activeTab === tab) return;
@@ -20,6 +56,29 @@ export default function App() {
       setActiveTab(tab);
     }
   };
+
+  if (!hasKey) {
+    return (
+      <div className="w-full h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center font-sans p-6">
+        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-8 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6">
+            <KeyRound className="w-8 h-8 text-emerald-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-100 mb-3">API Key Required</h2>
+          <p className="text-zinc-400 text-sm mb-8 leading-relaxed">
+            This application uses Gemini 3.1 Pro and Flash models for card scanning and rules judging.
+            You must provide your own Google Cloud API key to continue.
+          </p>
+          <button
+            onClick={handleProvideKey}
+            className="w-full bg-zinc-100 hover:bg-white text-zinc-900 font-bold py-3.5 px-6 rounded-2xl transition-colors"
+          >
+            Select API Key
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ToastProvider>

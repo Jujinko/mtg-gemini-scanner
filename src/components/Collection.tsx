@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useCollectionStore } from '../store/collectionStore';
-import { Trash2, Search, PlusCircle, Folders, ChevronRight, Share, LayoutGrid, List, AlignJustify, ExternalLink, X, Loader2 } from 'lucide-react';
+import { Trash2, Search, PlusCircle, Folders, ChevronRight, Share, LayoutGrid, List, AlignJustify, ExternalLink, X, Loader2, Scale } from 'lucide-react';
 import { useToast } from './ui/ToastProvider';
 import ExportDialog from './ExportDialog';
 import { Drawer } from 'vaul';
 import LazyCardImage from './LazyCardImage';
 import { ScryfallCard } from '../services/scryfall';
+import JudgeSheet from './JudgeSheet';
 
 type ViewMode = 'grid' | 'list' | 'checklist';
 
@@ -19,6 +20,7 @@ export default function Collection() {
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [scryfallDetails, setScryfallDetails] = useState<ScryfallCard | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [isJudgeSheetOpen, setIsJudgeSheetOpen] = useState(false);
 
   // When card is tapped, fetch details from scryfall
   const handleCardTap = async (item: any) => {
@@ -30,9 +32,12 @@ export default function Collection() {
       if (res.ok) {
         const data = await res.json();
         setScryfallDetails(data);
+      } else {
+        const err = new Error(`Scryfall generic error ${res.status}`);
+        showToast('Failed to load card details', 'error', undefined, err);
       }
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      showToast('Failed to load card details', 'error', undefined, err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoadingDetails(false);
     }
@@ -257,7 +262,7 @@ export default function Collection() {
                             </div>
                           )}
 
-                          <div className="pt-4 border-t border-zinc-800">
+                          <div className="pt-4 border-t border-zinc-800 flex flex-wrap gap-4 items-center">
                             <a 
                                href={scryfallDetails.scryfall_uri} 
                                target="_blank" 
@@ -266,6 +271,16 @@ export default function Collection() {
                             >
                                 View on Scryfall <ExternalLink className="w-4 h-4" />
                             </a>
+                            <button
+                               onClick={() => {
+                                 // We need to keep the bottom sheet open or somehow pass the card.
+                                 // Let's just open JudgeSheet. It might render over this drawer.
+                                 setIsJudgeSheetOpen(true);
+                               }}
+                               className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-bold transition hover:bg-emerald-500/20 text-sm"
+                            >
+                               <Scale className="w-4 h-4" /> Ask Judge
+                            </button>
                           </div>
                         </>
                       ) : (
@@ -279,6 +294,12 @@ export default function Collection() {
           </Drawer.Content>
         </Drawer.Portal>
       </Drawer.Root>
+
+      <JudgeSheet 
+          cards={selectedCard && scryfallDetails ? [scryfallDetails] : []}
+          open={isJudgeSheetOpen}
+          onOpenChange={setIsJudgeSheetOpen}
+      />
     </div>
   );
 }

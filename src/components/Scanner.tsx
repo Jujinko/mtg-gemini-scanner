@@ -1,12 +1,15 @@
 import React, { useRef, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import { Camera, SwitchCamera, Loader2, X, Zap, ZapOff, Repeat } from 'lucide-react';
+import { Camera, SwitchCamera, Loader2, X, Zap, ZapOff, Repeat, Scale } from 'lucide-react';
 import { identifyCardFromImage } from '../services/gemini';
 import { searchScryfallCard, ScryfallCard } from '../services/scryfall';
 import { useToast } from './ui/ToastProvider';
 import { getStandardCardImage } from '../lib/mtg';
 import ScanConfirmDialog from './ScanConfirmDialog';
+import JudgeSheet from './JudgeSheet';
+import { setAlphaToken, getAlphaToken } from '../lib/judgeFlag';
 import { useCollectionStore } from '../store/collectionStore';
+import { Drawer } from 'vaul';
 
 export default function Scanner() {
   const webcamRef = useRef<Webcam>(null);
@@ -20,8 +23,21 @@ export default function Scanner() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [isContinuousMode, setIsContinuousMode] = useState(false);
+  const [isJudgeMode, setIsJudgeMode] = useState(false);
+  const [judgeCards, setJudgeCards] = useState<ScryfallCard[]>([]);
+  const [isJudgeSheetOpen, setIsJudgeSheetOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [alphaTokenInput, setAlphaTokenInput] = useState(getAlphaToken() || '');
   const { addToCollection, removeFromCollection } = useCollectionStore();
   const [focusPoint, setFocusPoint] = useState<{ x: number, y: number } | null>(null);
+
+  const pressTimerRef = useRef<number | null>(null);
+  const handlePressStart = () => {
+    pressTimerRef.current = window.setTimeout(() => setIsSettingsOpen(true), 1000);
+  };
+  const handlePressEnd = () => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+  };
 
   React.useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -99,14 +115,14 @@ export default function Scanner() {
     if (isProcessing || foundCard) return;
     
     if (isOffline) {
-      showToast('You are offline. Please connect to the internet to scan.', 'error');
+      showToast('You are offline. Please connect to the internet to scan.', 'error', undefined, new Error('Offline'));
       if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
       return;
     }
 
     const rawImage = webcamRef.current?.getScreenshot();
     if (!rawImage) {
-      showToast('Could not access camera frame.', 'error');
+      showToast('Could not access camera frame.', 'error', undefined, new Error('Camera access failed null screenshot'));
       if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
       return;
     }
@@ -148,7 +164,9 @@ export default function Scanner() {
       const aiResult = await identifyCardFromImage(imageSrc);
       
       if (aiResult.error || !aiResult.name) {
-        showToast(aiResult.error || 'Could not identify this card.', 'error');
+        const errMsg = aiResult.error || 'Could not identify this card.';
+        const errObj = aiResult.errorObj || new Error(`Gemini Identification Error: ${errMsg}`);
+        showToast(errMsg, 'error', undefined, errObj);
         if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
         setIsProcessing(false);
         return;
@@ -160,7 +178,7 @@ export default function Scanner() {
       const searchResult = await searchScryfallCard(aiResult.name, aiResult.set);
       
       if (!searchResult) {
-        showToast(`Could not find details for "${aiResult.name}" in Scryfall.`, 'error');
+        showToast(`Could not find details for "${aiResult.name}" in Scryfall.`, 'error', undefined, new Error(`Scryfall Lookup Failed for "${aiResult.name}"`));
         if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
         setIsProcessing(false);
         return;
@@ -168,7 +186,16 @@ export default function Scanner() {
 
       if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
 
-      if (isContinuousMode) {
+      if (isJudgeMode) {
+        if (judgeCards.length >= 3) {
+          showToast('Max 3 cards for Judge mode. Ask a question or remove a card.', 'error', undefined, new Error(`Judge mode card limit exceeded`));
+        } else if (judgeCards.find(c => c.id === searchResult.card.id)) {
+          showToast(`Card ${searchResult.card.name} is already added.`, 'info');
+        } else {
+          setJudgeCards(prev => [...prev, searchResult.card]);
+          showToast(`Added ${searchResult.card.name} to Judge tray.`, 'success');
+        }
+      } else if (isContinuousMode) {
         if (searchResult.matchType === 'exact') {
           const scryCard = searchResult.card;
           const imageUrl = getStandardCardImage(scryCard);
@@ -194,14 +221,15 @@ export default function Scanner() {
         setFoundCard(searchResult.card);
       }
 
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      showToast('An unexpected error occurred.', 'error');
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      showToast('An unexpected error occurred.', 'error', undefined, errorObj);
       if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
     } finally {
       setIsProcessing(false);
     }
-  }, [webcamRef, isProcessing, showToast, isOffline, isContinuousMode, addToCollection, removeFromCollection, foundCard]);
+  }, [webcamRef, isProcessing, showToast, isOffline, isContinuousMode, isJudgeMode, judgeCards, addToCollection, removeFromCollection, foundCard]);
 
   React.useEffect(() => {
     if (!isContinuousMode || isProcessing || isOffline || foundCard) return;
@@ -222,8 +250,13 @@ export default function Scanner() {
         
         {/* Top Navigation Bar from template */}
         <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-6 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700 pointer-events-auto shadow-md">
+          <div className="flex items-center gap-2 sm:gap-4 pointer-events-auto select-none"
+               onPointerDown={handlePressStart}
+               onPointerUp={handlePressEnd}
+               onPointerLeave={handlePressEnd}
+               onContextMenu={(e) => e.preventDefault()}
+          >
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700 shadow-md">
                 <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-300" />
             </div>
             <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-white drop-shadow-md">Scanner</h1>
@@ -368,16 +401,106 @@ export default function Scanner() {
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full border-2 border-zinc-950 shadow-[0_0_5px_rgba(52,211,153,0.8)]"></div>
                     )}
                 </button>
+                
+                <button
+                    onClick={() => {
+                        setIsJudgeMode(!isJudgeMode);
+                        if (isContinuousMode) setIsContinuousMode(false);
+                    }}
+                    className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full border flex items-center justify-center transition-colors shadow-xl relative ${
+                       isJudgeMode 
+                         ? 'bg-purple-500 border-purple-400 text-zinc-950' 
+                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                    aria-label="Judge Mode"
+                >
+                    <Scale className="w-5 h-5 sm:w-6 sm:h-6" />
+                    {isJudgeMode && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-400 rounded-full border-2 border-zinc-950 shadow-[0_0_5px_rgba(168,85,247,0.8)]"></div>
+                    )}
+                </button>
             </div>
+            
+            {/* Judge Tray */}
+            {isJudgeMode && (
+                <div className="bg-zinc-900/90 backdrop-blur-md rounded-xl p-3 border border-zinc-800/80 w-[90%] max-w-sm pointer-events-auto flex items-center justify-between shadow-2xl">
+                    <div className="flex gap-2 min-w-0 flex-1 overflow-x-auto pr-2 pb-1">
+                        {judgeCards.length === 0 && <span className="text-sm text-zinc-500 py-1">Scan cards to ask Judge...</span>}
+                        {judgeCards.map((c, i) => (
+                           <div key={i} className="flex-shrink-0 bg-zinc-800 rounded px-2 py-1 text-xs border border-zinc-700 max-w-[100px] truncate relative group">
+                             {c.name}
+                             <button 
+                               onClick={() => setJudgeCards(prev => prev.filter((_, idx) => idx !== i))}
+                               className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center hidden group-hover:flex shadow-sm"
+                             >
+                                <X className="w-3 h-3" />
+                             </button>
+                           </div>
+                        ))}
+                    </div>
+                    <button 
+                       onClick={() => setIsJudgeSheetOpen(true)}
+                       disabled={judgeCards.length === 0}
+                       className="bg-emerald-500 text-zinc-950 font-bold px-4 py-2 rounded-lg text-sm flex-shrink-0 disabled:opacity-50"
+                    >
+                       Ask
+                    </button>
+                </div>
+            )}
         </div>
 
-        {foundCard && (
+        <JudgeSheet 
+            cards={judgeCards}
+            open={isJudgeSheetOpen}
+            onOpenChange={setIsJudgeSheetOpen}
+        />
+
+        {foundCard && !isJudgeMode && (
             <ScanConfirmDialog 
                 scryfallCard={foundCard} 
                 onClose={() => setFoundCard(null)} 
                 onOverrideCard={(card) => setFoundCard(card)}
             />
         )}
+
+        <Drawer.Root open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+            <Drawer.Portal>
+                <Drawer.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" />
+                <Drawer.Content className="bg-zinc-950 border-t border-zinc-800 flex flex-col rounded-t-[20px] fixed bottom-0 left-0 right-0 z-50 text-zinc-100 font-sans shadow-2xl p-5 pb-8">
+                    <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-zinc-800 mb-6" />
+                    <h3 className="font-bold text-lg mb-4">Settings</h3>
+                    
+                    <div className="flex flex-col gap-2">
+                        <label className="text-sm text-zinc-400">Alpha Access Token</label>
+                        <div className="flex gap-2">
+                            <input 
+                               type="text" 
+                               value={alphaTokenInput}
+                               onChange={(e) => setAlphaTokenInput(e.target.value)}
+                               placeholder="Enter token..."
+                               className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm focus:outline-none focus:border-emerald-500/50"
+                            />
+                            <button 
+                               onClick={() => {
+                                 const success = setAlphaToken(alphaTokenInput);
+                                 if (success) {
+                                   showToast('Alpha token initialized', 'success');
+                                   setIsSettingsOpen(false);
+                                   // Hard reload to let state catch up globally
+                                   window.location.reload();
+                                 } else {
+                                   showToast('Invalid alpha token', 'error', undefined, new Error(`Invalid token: ${alphaTokenInput}`));
+                                 }
+                               }}
+                               className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 rounded-lg font-medium text-sm transition"
+                            >
+                               Save
+                            </button>
+                        </div>
+                    </div>
+                </Drawer.Content>
+            </Drawer.Portal>
+        </Drawer.Root>
     </div>
   );
 }

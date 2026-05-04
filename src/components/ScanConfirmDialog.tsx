@@ -92,8 +92,9 @@ export default function ScanConfirmDialog({ scryfallCard, onClose, onOverrideCar
       } else {
         showToast(`Could not load details for ${name}`, 'error');
       }
-    } catch {
-      showToast(`Could not load details for ${name}`, 'error');
+    } catch (err: unknown) {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      showToast(`Could not load details for ${name}`, 'error', undefined, errorObj);
     } finally {
       setIsSearching(false);
     }
